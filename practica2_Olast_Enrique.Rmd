@@ -1,0 +1,484 @@
+---
+title: "Practica 2: Limpieza y analisis de datos"
+author: "Olast Arrizibita Iriarte / Enrique Perez Balbuena"
+date: "11/5/2020"
+output:
+ html_document:
+    toc: yes
+    lang: es-ES
+bibliography: titanic.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_libraries, include=FALSE}
+
+library(knitr)
+library(stringr)
+library(ggplot2)
+library(dplyr)
+library(Hmisc)
+library(plotly)
+library(kableExtra)
+library(readr)
+library(readxl)
+library(tidyr)
+
+
+library(DMwR)
+
+library(rpart)
+library(rpart.plot)
+library(caret)
+
+```
+
+## Leyendo los ficheros
+
+Cargamos los diferentes ficheros, leyendo cada *.csv desde nuestro directorio con la función 'read.csv'. 
+
+```{r bank}
+# leemos primero el fichero 'train.csv' desde el propio directorio donde se encuentra
+# este archivo
+df_train <- read.csv("train.csv", sep=",", na.strings = "NA")
+df_test <- read.csv("test.csv", sep=",", na.strings = "NA")
+df_gender <- read.csv("gender_submission.csv", sep=",", na.strings = "NA")
+
+
+```
+
+Vamos a integrar los tres conjuntos de datos en un solo dataset, de tal forma que conjuntamente podamos manipular y tratar las diferentes variables.
+
+```{r merge_test_gender}
+df_test_gender <- merge(df_gender, df_test,  by='PassengerId')
+```
+
+Finalmente creamos el dataset final con los dos dataframes.
+
+```{r rbind_train_test_gender}
+df <- rbind(df_train, df_test_gender)
+```
+
+Renombramos las variables
+
+```{r renombrar}
+
+names(df)<-c("passengerId", "survived", "pclass", "name", "sex", "age", "sibSp", "parch", "ticket", "fare", "cabin", "embarked")
+
+```
+
+
+Guardamos en un archivo Rdata el objeto creado ahora
+
+```{r guardar, eval=FALSE, include=FALSE}
+
+save(df, file="20200511_o_baseJuntas.Rdata")
+
+load("20200511_o_baseJuntas.Rdata")
+
+```
+
+
+### función 'str( )'
+
+Antes de nada, usamos la función 'str( )', que sirve para conocer la estructura del data frame.
+
+```{r str1}
+
+# podemos entender mejor la estructura del data frame 'df'
+str(df)
+```
+
+Podemos ver que tenemos 891 observaciones y 12 variables. 
+
+### función 'head( )'
+
+Podemos comprobar parte de la información de nuestro data frame, usando la función
+de R 'head( )', el cual nos devolverá las 6 primeras filas con todas sus columnas.
+
+```{r head}
+head(df)
+```
+
+### función 'summary( )'
+
+También podemos comprobar algunos datos estadísticos básicos empleando la función 'summary( )'.
+
+```{r summary}
+summary(df)
+
+```
+
+Variables en las que tenemos valores perdidos: age, fare, cabin, embarked
+
+Como podemos observar la variable cabin en su mayoria tiene valores faltantes por lo tanto, hemos decidido deshacernos de esta variable. Ya que no nos puede aportar mucho en estas condiciones.
+
+```{r quitar variables}
+
+df<- df %>% select(-cabin)
+
+```
+
+## Análisis gráfico
+
+Diagrama de barras del número de pasajeros que sobrevivieron y fallecieron en el hundimiento del titanic.
+
+```{r grap_Survived}
+# diagrama de barras según la variable 'Survived'
+nombres.filas<-c("0: falleció", "1: Sobrevivió")
+par(las=2)
+barplot(table(df$survived), space=0.1, col=c(1:2), ylim=c(0,1000), main="Nº supervivientes", density=50, ylab="Nº pasajeros", las=1)
+legend(1.5, 850, nombres.filas, fill=c(1:2), cex=0.8)
+```
+
+Diagrama de barras del número de pasajeros según su género.
+
+```{r grap_Sex}
+# diagrama de barras según la variable 'Sex'
+nombres.filas<-c("Mujer (female)", "Hombre (male)")
+par(las=2)
+barplot(table(df$sex), space=0.1, col=c(3:4), ylim=c(0,1000), main="Género del pasajero", density=50, ylab="Nº pasajeros", las=1)
+legend(0.3, 850, nombres.filas, fill=c(3:4), cex=0.8)
+```
+
+Podemos observar cómo prácticamente las 2/3 partes de los datos son hombres y 1/3 de los pasajeros son mujeres.
+
+Diagrama de barras del número de pasajeros según el puerto de embarque
+
+```{r grap_puerto_embarque}
+# diagrama de barras según el puerto de embarque
+nombres.filas<-c("NA", "Queenstown (Q)", "Cherburgo (C)", "Southampton (S)")
+par(las=2)
+barplot(sort(table(df$embarked)), space=0.2, col=c(4:7),  ylim=c(0,1000), main="Puerto de embarque", density=50, ylab="Nº pasajeros", las=1)
+legend(0.3, 850, nombres.filas, fill=c(4:7), cex=0.8)
+```
+
+Diagrama de barras del número de pasajeros según el rango de edades
+
+```{r grap_edades}
+# diagrama de barras del número de pasajeros según rango de sus edades
+edad = df$age
+
+edad_1 = which(edad <=10)
+edad_2 = which(edad >10 & edad <=20)
+edad_3 = which(edad >20 & edad <=30)
+edad_4 = which(edad >30 & edad <=40)
+edad_5 = which(edad >40 & edad <=50)
+edad_6 = which(edad >50 & edad <=60)
+edad_7 = which(edad >60 & edad <=70)
+edad_8 = which(edad >70)
+
+datos_edad <- c(length(edad_1), length(edad_2), length(edad_3), length(edad_4), length(edad_5), length(edad_6), 
+                length(edad_7), length(edad_8))
+
+par(las=2)
+barplot(datos_edad, col=c(1:8),  cex.names=0.5, ylim=c(0,400), main="Edad pasajeros", density=50, ylab="Nº pasajeros", las=1)
+
+nombres_pesos.filas<-c("menos 10 años", "10 - 20 años", "20 - 30 años", "30 - 40 años", "40 - 50 años", "50 - 60 años", "60 - 70 años", "más 70 años" )
+legend(6.7, 370, nombres_pesos.filas, fill=c(1:8), cex=0.8)
+```
+
+Diagrama de barras del número de pasajeros según la clase del billete
+
+```{r grap_clase}
+# diagrama de barras según la clase del billete
+nombres.filas<-c("1: 1ª clase", "2: 2ª clase", "3: 3ª clase")
+par(las=2)
+barplot(table(df$pclass), space=0.2, col=c(3:5),  ylim=c(0,800), main="Clase del billete", density=50, ylab="Nº pasajeros", las=1)
+legend(0.3, 650, nombres.filas, fill=c(3:5), cex=0.8)
+```
+
+
+Vamos a ver si tenemos valores outliers.
+
+```{r outliers}
+
+df %>% dplyr::select(age, sibSp, parch, fare) %>% tidyr::gather("id", "value",1:4) %>% group_by(id) %>% mutate(val1=mean(value, na.rm = TRUE)+3*sd(value, na.rm = TRUE), val2=mean(value, na.rm = TRUE)-3*sd(value, na.rm = TRUE)) %>% ungroup() %>% 
+  ggplot(., aes(x = id, y = value))+geom_boxplot(outlier.color = "red", outlier.size=1.5) +geom_point(mapping = aes(x = id, y = val1),color="green") +geom_point(mapping = aes(x = id, y = val2),color="green") + theme(axis.text.x = element_text(face="bold", angle=45))
+
+```
+
+
+Por lo que vemos, tenemos algunos outliers en la variable fare por la parte de arriba. Podriamos pensar que esos valores son valores falsos. Pero revisando un poco la historia del titanic (https://www.lne.es/internacional/2015/04/15/10-curiosidades-hundimiento-titanic/1741698.html). Nos damos cuenta que estos valores si que podian ser. Pero como hemos podido ver si que tenemos valores que son falsos. Ya que hay valores igual a 0.
+
+```{r describe2}
+describe(df$fare)
+```
+
+Estos sí que son erroneos. Ya que no puede ser que el precio del billete sea gratis. Por lo tanto, lo sustituimos por NA y lo trataremos como un valor perdido.
+
+```{r billete}
+
+df<- df %>% mutate(fare=ifelse(fare==0, NA, fare))
+
+
+colSums(is.na(df))
+
+```
+
+
+Para los valores perdidos utilizaremos el algoritmo de los K-vecinos mas proximos siendo K=2. Esto lo implementaremos con el comando knnImputation de la libreria DMwR. Esta función nos escala las variables para que el resultado sea el correcto.
+
+Pero, antes de hacer la imputación debemos factorizar las variables que no sean numericas.
+
+```{r vecinos1}
+
+df<- df %>% mutate(name=as.factor(name),
+                   sex=as.factor(sex),
+                   ticket=as.factor(ticket),
+                   embarked=as.factor(embarked))
+
+```
+
+
+Ahora sí, hagamos la imputación.
+
+```{r vecinos2}
+anyNA(df)
+
+df<- data.frame(df)
+df<- knnImputation(df,k=2)
+
+anyNA(df)
+
+```
+
+La variable 'age' antes de la imputación solamente tenía valores enteros. Por lo tanto mantendremos este atributo.
+
+```{r vecinos3}
+
+df<- df %>% mutate(age=trunc(age))
+
+```
+
+```{r save_archivo_final}
+
+# guardamos el archivo (al ser csv2, los datos estarán separados por un punto y coma ';')
+write.csv2(df, file="C:/UOC/R/df_final.csv", row.names=F)
+```
+
+
+
+## Regresión logistica
+
+
+Lo primero que haremos sera ver las regresiones simples de las variables con la variable survived. Para ver si luego lo podemos meter en el modelo de regresion logistica.
+
+Empezaremos por las variables cualitativas. Las variables name y ticket no los meteremos en el analisis
+
+```{r}
+
+survi_sex<-glm(survived~sex, family=binomial,data=df)
+summary(survi_sex) # Null deviance: 1735.1, Residual deviance: 1079.7
+pchisq(1735.1-1079.7,df=1,lower.tail=FALSE)
+
+
+```
+
+Es significativa ya que p-value=1.495288e-144<0.05
+
+```{r}
+
+survi_embarked<-glm(survived~embarked, family=binomial,data=df)
+summary(survi_embarked) # Null deviance: 1735.1, Residual deviance: 1710.0
+pchisq(1735.1-1710.0,df=2,lower.tail=FALSE)
+
+
+```
+
+
+Es significativa ya que p-value=3.544902e-06
+
+```{r}
+
+df$pclass<- as.factor(df$pclass)
+
+survi_pclass<-glm(survived~pclass, family=binomial,data=df)
+summary(survi_pclass) # Null deviance: 1735.1, Residual deviance: 1643.8
+pchisq(1735.1-1643.8,df=2,lower.tail=FALSE)
+
+```
+
+Es significativa ya que p-value=1.494366e-20
+
+
+```{r}
+
+df$sibSp<- as.factor(df$sibSp)
+
+survi_sibSp<-glm(survived~sibSp, family=binomial,data=df)
+summary(survi_sibSp) # Null deviance: 1735.1, Residual deviance: 1690.2
+pchisq(1735.1-1690.2,df=6,lower.tail=FALSE)
+
+
+```
+
+Es significativa ya que p-value=4.899295e-08
+
+```{r}
+
+df$parch<- as.factor(df$parch)
+
+survi_parch<-glm(survived~parch, family=binomial,data=df)
+summary(survi_parch) # Null deviance: 1735.1, Residual deviance: 1689.6
+pchisq(1735.1-1689.6,df=7,lower.tail=FALSE)
+
+
+```
+
+Es significativa ya que p-value=1.093564e-07
+
+*Ahora con las variables cuantitativas.
+
+```{r}
+
+survi_age<-glm(survived~age, family=binomial,data=df)
+summary(survi_age)
+
+```
+
+Como podemos observar el p-valor es 0.0732, por lo tanto, no seria significativa (p>0.05). Pero para el modelo multivariante si que lo meteremos ya que el p-valor es menor de 0.2.
+
+
+```{r}
+
+survi_fare<-glm(survived~fare, family=binomial,data=df)
+summary(survi_fare)
+
+```
+
+Como podemos observar el p-valor es 9.54e-14, por lo tanto, es significativa.
+
+Por lo tanto, para el modelo logistico multivariante utilizaremos todas las variables que tenemos excepto las variables name y ticket. Para luego optimizar el modelo que tengamos.
+
+```{r}
+modelo1<-glm(survived~pclass+sex+age+sibSp+parch+fare+embarked,family=binomial,data=df)
+# summary(modelo1)
+drop1(modelo1,test="Chi")
+```
+
+Los que tienen p-valores malos los quitaremos.
+
+```{r}
+
+modelo2<-glm(survived~pclass+sex+age+sibSp,family=binomial,data=df)
+# summary(modelo2)
+drop1(modelo2,test="Chi")
+
+anova(modelo1,modelo2,test="Chi")
+
+```
+
+Como el p-valor es igual a 0.3086. Por lo tanto nos quedaremos con este segundo modelo.
+
+## Test/Entrenamiento
+
+Seleccionamos las variables que utilizaremos en para hacer el test
+
+```{r}
+
+df_tes<- df %>% select(pclass,sex,age,sibSp,survived)
+
+df_tes$survived<-as.factor(df_tes$survived)
+
+```
+
+Lo primero que haremos sera desordenar la base. Como podemos observar estamos utilizando el comando set.seed(). Pero, ¿Para que sirve ese comando? Pues su función sera la de que la aleatorización de los elementos sea reproducible. Así, podremos reproducir los resultado que consigamos.
+
+Para la evaluación del árbol de decisión que queremos crear deberemos de crear dos conjuntos de datos. Uno de entrenamiento para generar un modelo predictivo y el otro de prueba, para comprobar la eficacia de este modelo para hacer predicciones correctas que seran aleatorias. Normalmente para el del entrenamiento se le dan 2/3 de la base y al segundo el resto.
+
+Para empezar como hemos dicho desordenaremos la base de datos y la dividiremos en dos. Por una parte los atributos independientes y por otro el de respuesta.
+
+```{r}
+
+set.seed(4)
+df_random <- df_tes[sample(nrow(df_tes)),]
+
+y <- df_random[,5] 
+X <- df_random[,1:4]
+
+indexes = sample(1:nrow(df_tes), size=floor((2/3)*nrow(df_tes)))
+trainX<-X[indexes,]
+trainy<-y[indexes]
+testX<-X[-indexes,]
+testy<-y[-indexes]
+
+
+```
+
+
+```{r}
+arbol_1 <- C50::C5.0(trainX, trainy,rules=TRUE )
+
+summary(arbol_1)
+```
+
+* Rule 1 nos indica que si age <= 16 o sibSp dentro de {3, 4, 5, 8}. Entonces, No sobrevive Validez: 94%.
+* Rule 2 nos indica que si sex = male. Entonces, no sobrevive. Validez: 88%.
+* Rule 3 nos indica que si sex = female o sibSp dentro de {0, 1, 2}. Entonces, sobrevive. Validez: 84%.
+* Rule 4 nos indica que si sex = female o age > 16. Entonces, sobrevive. Validez: 84%.
+
+Lo dicho ahora lo podemos representar gráficamente
+
+```{r}
+arbol_2 <- C50::C5.0(trainX, trainy)
+plot(arbol_2)
+```
+
+Hemos conseguido un modelo en base al subconjunto que habiamos creado para entrenamiento. A la vez que este habiamos creado otro subconjunto que lo ibamos ha utilizar para comprobar la calidad del modelo. Esto lo haremos prediciendo la severidad del subconjunto de prueba.
+
+```{r}
+
+predicted_model <- predict( arbol_1, testX, type="class" )
+print(sprintf("La precisión del árbol es: %.4f %%",100*sum(predicted_model == testy) / length(predicted_model)))
+
+confusionMatrix(predicted_model, testy)
+
+```
+
+```{r}
+modelo2 <- C50::C5.0(trainX, trainy, trials = 10) 
+data_predicted2 <- predict(modelo2, testX, type="class")
+confusionMatrix(data = data_predicted2, reference = testy)
+```
+
+Obtenemos una exactitud (Accuracy) del 84%. Al respecto de la severidad, supervivencia nuestro modelo tiene una sensibilidad del 91%. Esto es, somos capaces de predecir el 91% de las personas que no van a sobrevivir.
+
+
+Ahora lo que haremos será hacer un nuevo modelo con sets de entrenamiento y de test distintos, para comprobar si se mantiene lo conseguido hasta ahora
+
+```{r}
+
+set.seed(5)
+df_random1 <- df_tes[sample(nrow(df_tes)),]
+
+y1 <- df_random1[,5] 
+X1 <- df_random1[,1:4]
+
+indexes = sample(1:nrow(df_tes), size=floor((2/3)*nrow(df_tes)))
+trainX1<-X1[indexes,]
+trainy1<-y1[indexes]
+testX1<-X1[-indexes,]
+testy1<-y1[-indexes]
+
+
+arbol_11 <- C50::C5.0(trainX1, trainy1,rules=TRUE )
+arbol_21 <- C50::C5.0(trainX1, trainy1)
+plot(arbol_21)
+
+```
+
+
+```{r}
+
+predicted_model1 <- predict( arbol_11, testX1, type="class" )
+print(sprintf("La precisión del árbol es: %.4f %%",100*sum(predicted_model1 == testy1) / length(predicted_model1)))
+
+confusionMatrix(predicted_model1, testy1)
+```
+
+En este nuevo caso la predicción es prácticamente la misma que en la anterior. Pero debemos resaltar que el este modelo es bastante diferente respecto al anterior modelo en lo que se refiere a las particiones.
+
+
